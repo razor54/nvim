@@ -55,58 +55,50 @@ return {
           text = {
             "%=",
             function(args)
-              if args.virtnum < 0 then
+              local mode = vim.fn.mode()
+              local normalized_mode = vim.fn.strtrans(mode):lower():gsub("%W", "")
+
+              -- case 1
+              if normalized_mode ~= 'v' and vim.v.virtnum == 0 then
+                return require("statuscol.builtin").lnumfunc(args)
+              end
+
+              if vim.v.virtnum < 0 then
                 return '-'
               end
 
-              local num_wraps = vim.api.nvim_win_text_height(args.win, {
-                start_row = args.lnum - 1,
-                end_row = args.lnum - 1,
-              })["all"] - 1
+              local line = require("statuscol.builtin").lnumfunc(args)
 
-              local e_row = vim.fn.line('.')
+              if vim.v.virtnum > 0 then
+                local num_wraps = vim.api.nvim_win_text_height(args.win, {
+                  start_row = args.lnum - 1,
+                  end_row = args.lnum - 1,
+                })["all"] - 1
 
-              local text = get_numcol_text(args, num_wraps)
-
-              local is_visual = vim.fn.strtrans(vim.fn.mode()):lower():gsub("%W", "") == 'v'
-              if not is_visual then
-                if args.virtnum == 0 then
-                  return require("statuscol.builtin").lnumfunc(args)
+                if vim.v.virtnum == num_wraps then
+                  line = '└'
+                else
+                  line = '├'
                 end
-
-                return e_row == args.lnum and
-                    tools.hl_str("CursorLineNr", text) or
-                    tools.hl_str("LineNr", text)
               end
 
-              local s_row
-              s_row, e_row = swap(vim.fn.line('v'), e_row)
+              -- Highlight cases
+              if normalized_mode == 'v' then
+                local pos_list = vim.fn.getregionpos(
+                  vim.fn.getpos('v'),
+                  vim.fn.getpos('.'),
+                  { type = mode, eol = true }
+                )
+                local s_row, e_row = pos_list[1][1][2], pos_list[#pos_list][2][2]
 
-              -- if the line number is outside our visual selection
-              if args.lnum < s_row or args.lnum > e_row then
-                return tools.hl_str("LineNr", text)
+                if vim.v.lnum >= s_row and vim.v.lnum <= e_row then
+                  return tools.hl_str("CursorLineNr", line)
+                end
               end
 
-              -- if the line is visually selected and not wrapped
-              if num_wraps == 0  or (s_row < args.lnum and args.lnum < e_row) then
-                return tools.hl_str("CursorLineNr", text)
-              end
-
-              -- Here, the line is visually selected and wrapped
-              local buf_width = get_buf_width()
-              local start_wrap = math.floor((vim.fn.virtcol('v') - 1) / buf_width)
-              local end_wrap = math.floor((vim.fn.virtcol('.') - 1) / buf_width)
-
-              if start_wrap == 0 and args.lnum < e_row then
-                start_wrap = end_wrap
-                end_wrap = num_wraps
-              end
-
-              if start_wrap <= args.virtnum and args.virtnum <= end_wrap then
-                return tools.hl_str("CursorLineNr", text)
-              end
-
-              return tools.hl_str("LineNr", text)
+              return vim.fn.line('.') == vim.v.lnum and
+                  tools.hl_str("CursorLineNr", line) or
+                  tools.hl_str("LineNr", line)
             end,
             ' '
           },
